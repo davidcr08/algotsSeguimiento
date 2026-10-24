@@ -2,22 +2,32 @@ import json
 import re
 from pathlib import Path
 
-import fitz  # PyMuPDF
+#Copia los 20 PDFs a data\pdfs\ y crea este archivo. 
+# Es un primer borrador que saca el abstract 
+# y avisa de cuáles no logró encontrar:
+
+import pymupdf # PyMuPDF
 
 PDF_DIR = Path("data/pdfs")
 OUT_FILE = Path("data/processed/abstracts.json")
 
-# Marcadores donde suele terminar el abstract
-END_MARKERS = r"(?:keywords?|index terms|(?:1|i)\.?\s+introduction|introduction)"
 
+# "Abstract" también si viene con letras separadas (A B S T R A C T)
+START = r"a\s*b\s*s\s*t\s*r\s*a\s*c\s*t"
+
+# Marcadores donde suele terminar el abstract
+END_MARKERS = (
+    r"(?:keywords?|key\s+words|index\s+terms|article\s+history"
+    r"|(?:1|i)\.?\s+introduction|introduction)"
+)
 
 def read_first_pages(pdf_path: Path, n_pages: int = 2) -> str:
-    with fitz.open(pdf_path) as doc:
+    with pymupdf.open(pdf_path) as doc:
         return "\n".join(doc[i].get_text() for i in range(min(n_pages, len(doc))))
 
 
 def find_abstract(text: str) -> str | None:
-    pattern = rf"abstract\s*[:\-—.]?\s*(.+?)(?=\n\s*{END_MARKERS}\b)"
+    pattern = rf"{START}\s*[:\-—.]?\s*(.+?)(?=\n\s*{END_MARKERS}\b)"
     match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
     if not match:
         return None
