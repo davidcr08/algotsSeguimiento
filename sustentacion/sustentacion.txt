@@ -1,0 +1,298 @@
+=====================================================================
+sustentacion(Counting Sort, Radix Sort, Bucket Sort)
+Materia: Analisis de Algoritmos
+Por : David Clavijo Rojas
+=====================================================================
+
+Resumen 
+-----------------------
+- Data SET: 20 articulos cientificos (PDF) sobre IA en educacion. Se procesa
+  unicamente el abstract de cada articulo.
+- Preprocesamiento: minusculas, solo letras (minimo 2 caracteres),
+  stopwords de NLTK + stopwords adicionales del dominio, lematizacion de
+  sustantivos con WordNet.
+- Resultado: 2409 terminos en total, n = 911 terminos unicos,
+  frecuencia maxima k = 86 ("ai").
+- Entrada de los algoritmos: lista de pares (termino, frecuencia) en orden
+  alfabetico. Salida: la misma lista ordenada por frecuencia descendente.
+- Criterio de desempate: frecuencia descendente y, a igual frecuencia,
+  orden alfabetico. Los tres algoritmos son estables, por eso los empates
+  quedan alfabeticos sin logica adicional.
+- Entorno de pruebas: Python 3.12.5, Windows.
+  
+
+
+=====================================================================
+PREGUNTA 1. FUNDAMENTACION TEORICA
+Por que estos algoritmos logran O(n+k) u O(n)
+=====================================================================
+
+Idea comun
+----------
+Los ordenamientos por comparacion (merge sort, quicksort, etc.) no pueden
+bajar de O(n log n) en el peor caso, porque para distinguir entre las n!
+ordenaciones posibles necesitan al menos log2(n!) = O(n log n)
+comparaciones. Esa cota NO aplica a Counting, Radix y Bucket Sort porque
+no deciden el orden comparando elementos entre si: usan el valor de la
+clave (aqui, la frecuencia, un entero acotado) como un indice de arreglo.
+A cambio, exigen una condicion: que las claves sean enteros (o se puedan
+mapear a enteros) dentro de un rango conocido y limitado.
+
+Notacion: n = cantidad de elementos (terminos unicos), k = valor maximo de
+la clave (frecuencia maxima), b = base del sistema numerico (Radix),
+d = cantidad de digitos de la clave maxima, m = cantidad de buckets.
+
+1) Counting Sort -> O(n + k)
+----------------------------
+Procedimiento:
+  a) Se recorren los n elementos y se cuenta cuantos hay de cada
+     frecuencia: arreglo de k+1 posiciones.                    -> O(n)
+  b) Se recorre el arreglo de conteos una vez (de k hacia 0) para calcular
+     la posicion inicial de cada frecuencia (sumas acumuladas). -> O(k)
+  c) Se recorren los n elementos otra vez y cada uno se coloca
+     directamente en su posicion final.                          -> O(n)
+Total: n + k + n = O(n + k). No hay ciclos anidados que multipliquen el
+costo. Espacio adicional: O(n + k).
+Es estable porque los elementos se colocan en el orden en que aparecen en
+la entrada. En nuestro corpus k = 86 es muy pequeno frente a n = 911,
+por lo que en la practica el costo es casi lineal en n.
+
+2) Radix Sort (LSD) -> O(d * (n + b)), que es O(n) con d y b constantes
+-----------------------------------------------------------------------
+Procedimiento: se ordena por cada digito de la frecuencia, del menos
+significativo al mas significativo, usando en cada pasada un Counting Sort
+estable sobre ese digito (rango de 0 a b-1).
+  - Cada pasada cuesta O(n + b), porque los digitos solo toman b valores.
+  - Se hacen d pasadas, con d = floor(log_b(k)) + 1.
+  - Total: O(d * (n + b)).
+Con base b = 10 y k = 86 hay d = 2 pasadas, es decir, un costo del orden
+de 2 * (911 + 10). Como d y b no dependen de n (la frecuencia maxima no
+crece con la cantidad de terminos), el costo es O(n). La estabilidad de
+cada pasada es indispensable: garantiza que al ordenar por un digito mas
+significativo se conserve el orden ya logrado por los digitos anteriores.
+Cuando k crece junto con n (k proxima a n), d = log_b(n) y el costo es
+O(n log_b n); por eso la afirmacion O(n) depende de que d sea constante.
+
+3) Bucket Sort -> O(n + k) en el caso esperado
+----------------------------------------------
+Procedimiento: se reparten los n elementos en m buckets segun el rango de
+su frecuencia, se ordena cada bucket con insertion sort y se concatenan
+los buckets de mayor a menor.
+  - Repartir: O(n). Recorrer los buckets para concatenar: O(m).
+  - Si los datos se distribuyen de forma uniforme, cada bucket recibe en
+    promedio n/m elementos y el insertion sort de cada uno cuesta
+    O((n/m)^2) esperado, para un total de O(n + m + n^2/m).
+  - Con m proporcional a n el total esperado es O(n), es decir O(n + k)
+    donde k representa el numero de buckets (o el rango de claves).
+Peor caso: si todos los elementos caen en un solo bucket, el insertion
+sort cuesta O(n^2).
+Observacion sobre nuestra implementacion: con m = n buckets y frecuencias
+enteras con k < n (86 < 911), cada bucket recibe como maximo una unica
+frecuencia, de modo que el insertion sort no tiene que mover elementos
+(usa comparacion estricta, por lo que tambien es estable) y el costo es
+lineal. Es el caso favorable del algoritmo.
+Advertencia: dentro de cada bucket se usa un ordenamiento por comparacion
+(insertion sort). Bucket Sort cumple O(n + k) solo bajo el supuesto de
+reparto uniforme; no es incondicional como Counting Sort.
+
+La ley de Zipf y el supuesto de uniformidad
+-------------------------------------------
+Las frecuencias de palabras en un texto siguen aproximadamente la ley de
+Zipf. En nuestro corpus:
+   frecuencia 1: 531 terminos (58.3 %)
+   frecuencia 2: 169 terminos (18.6 %)  -> acumulado 76.8 %
+   frecuencia 3:  59 terminos ( 6.5 %)  -> acumulado 83.3 %
+Es decir, la distribucion NO es uniforme: la gran mayoria de los terminos
+tiene frecuencias muy bajas. Con pocos buckets (por ejemplo m = 5), mas de
+tres cuartas partes de los elementos caen en el primer bucket y el
+insertion sort interno se acerca al comportamiento cuadratico. Esto se
+comprueba en la medicion empirica (pregunta 2).
+
+Tabla resumen
+-------------
+ Algoritmo     | Complejidad               | Estable | Condicion clave
+---------------+---------------------------+---------+-----------------------------
+ Counting Sort | O(n + k)                  | Si      | claves enteras, k acotado
+ Radix Sort    | O(d(n + b)) = O(n)        | Si      | d y b constantes
+ Bucket Sort   | O(n + k) esperado         | Si      | reparto uniforme en buckets
+               | O(n^2) peor caso          |         | (insertion sort estable)
+
+
+=====================================================================
+PREGUNTA 2. MEDICION EMPIRICA
+Tiempos reales de ejecucion en milisegundos
+=====================================================================
+
+Metodo
+------
+- Entrada: lista de frecuencias del corpus completo (n = 911, k = 86).
+- Cronometro: time.perf_counter_ns(), convertido a milisegundos.
+- Se mide solo el ordenamiento (no la extraccion ni el preprocesamiento).
+- Cada algoritmo se ejecuta una vez de calentamiento y luego 300
+  repeticiones, siempre sobre la misma lista de entrada (ninguno la
+  modifica). Se reporta media, mediana, minimo y desviacion estandar.
+- Se incluyen dos referencias: Bucket Sort con 5 buckets (para mostrar el
+  efecto de la distribucion Zipf) y sorted() de Python.
+
+Resultados sobre el corpus (ms, 300 repeticiones)
+-------------------------------------------------
+ Algoritmo                 | Media   | Mediana | Minimo  | Desv.
+---------------------------+---------+---------+---------+--------
+ Counting Sort             |  0.1289 |  0.1275 |  0.1231 | 0.0080
+ Radix Sort                |  0.3141 |  0.3061 |  0.2912 | 0.0396
+ Bucket Sort (n buckets)   |  0.3817 |  0.3150 |  0.3002 | 1.0173
+ Bucket Sort (5 buckets)   | 10.4039 |  9.7771 |  9.2703 | 1.7822
+ sorted() de Python        |  0.0619 |  0.0584 |  0.0577 | 0.0121
+
+Interpretacion
+--------------
+- Counting Sort es el mas rapido de los tres: hace una sola pasada de
+  conteo y una de colocacion.
+- Radix Sort tarda unas 2.4 veces mas que Counting Sort (0.314 vs 0.129
+  ms) porque con k = 86 hace d = 2 pasadas, cada una equivalente a un
+  Counting Sort.
+- Bucket Sort con n buckets tarda unas 3 veces lo de Counting Sort. Crea
+  911 listas, casi todas vacias, y ese costo de construccion domina.
+  Su desviacion (1.02) es mayor que su media (0.38): hay mediciones
+  atipicas, probablemente por pausas del recolector de basura de Python,
+  por lo que se recomienda tomar la mediana (0.315 ms) como valor
+  representativo.
+- Bucket Sort con 5 buckets es unas 27 veces mas lento que con n buckets
+  (10.4 vs 0.38 ms): confirma que con datos tipo Zipf el reparto no es
+  uniforme y el insertion sort interno trabaja de verdad.
+- sorted() es el mas rapido porque esta implementado en C (Timsort), no
+  por una ventaja algoritmica. Las tres implementaciones propias estan en
+  Python puro, de modo que la comparacion significativa es entre ellas y
+  en su forma de crecer.
+- Con solo 911 terminos todos los tiempos son fracciones de milisegundo,
+  por lo que las diferencias son pequenas en terminos absolutos. Por eso
+  se hicieron los experimentos de escalamiento siguientes.
+
+Escalamiento A: datos sinteticos tipo Zipf con k = n (ms, media)
+----------------------------------------------------------------
+        n |  Counting |    Radix |   Bucket | Bucket(5) | sorted()
+    1,000 |     0.198 |    0.691 |    0.514 |    13.349 |    0.083
+    4,000 |     0.798 |    2.787 |    1.570 |   233.837 |    0.360
+   10,000 |     1.926 |    8.652 |    5.563 |         - |    0.919
+  100,000 |    19.403 |  132.972 |   78.520 |         - |   11.728
+1,000,000 |   213.740 | 2530.862 | 1547.198 |         - |  182.652
+(Bucket Sort con 5 buckets solo se ejecuto hasta n = 4000 porque su
+tiempo crece de forma cuadratica: al cuadruplicar n de 1000 a 4000, el
+tiempo se multiplico por 17.5, cercano a 16 = 4^2.)
+Counting Sort crece de forma lineal. Radix Sort se curva hacia arriba
+porque aqui k crece con n y el numero de digitos d pasa de 4 (n = 1000)
+a 7 (n = 1,000,000).
+
+Escalamiento B: k fijo = 86 (frecuencias remuestreadas del corpus)
+------------------------------------------------------------------
+Tiempo por termino en microsegundos. Si el algoritmo es lineal, este
+valor debe mantenerse casi constante al crecer n.
+ Algoritmo     | n = 1,000 | n = 10,000 | n = 100,000 | n = 1,000,000
+---------------+-----------+------------+-------------+--------------
+ Counting Sort |    0.150  |     0.151  |      0.215  |       0.183
+ Radix Sort    |    0.366  |     0.380  |      0.437  |       0.540
+ Bucket Sort   |    0.543  |     0.745  |      0.750  |       1.286
+ sorted()      |    0.081  |     0.083  |      0.114  |       0.127
+- Counting Sort (1.2x de variacion) y Radix Sort (1.5x) mantienen un
+  tiempo por termino casi constante: comportamiento lineal, como indica
+  la teoria con k fijo.
+- sorted() crece 1.6x, coherente con O(n log n).
+- Bucket Sort crece 2.4x. Con n buckets se crean listas casi todas
+  vacias (solo 86 reciben datos) y el costo de memoria por termino
+  aumenta con n; la causa probable es la presion sobre el recolector de
+  basura y la memoria, una hipotesis no verificada con un perfilador.
+  Aun asi el trabajo sigue siendo proporcional a n.
+
+
+=====================================================================
+PREGUNTA 3. VALIDACION DE RESULTADOS
+Top 15 de terminos mas frecuentes con cada algoritmo
+=====================================================================
+
+Los tres algoritmos devuelven exactamente la misma lista, que ademas
+coincide con la obtenida con sorted() (referencia). El programa valida
+esta igualdad antes de medir los tiempos y se detiene si alguna difiere.
+
+ #  | Counting Sort    | Radix Sort       | Bucket Sort
+----+------------------+------------------+------------------
+  1 | ai (86)          | ai (86)          | ai (86)
+  2 | education (57)   | education (57)   | education (57)
+  3 | research (46)    | research (46)    | research (46)
+  4 | review (46)      | review (46)      | review (46)
+  5 | learning (40)    | learning (40)    | learning (40)
+  6 | aied (38)        | aied (38)        | aied (38)
+  7 | assessment (37)  | assessment (37)  | assessment (37)
+  8 | educational (33) | educational (33) | educational (33)
+  9 | intelligence (23)| intelligence (23)| intelligence (23)
+ 10 | artificial (22)  | artificial (22)  | artificial (22)
+ 11 | technology (21)  | technology (21)  | technology (21)
+ 12 | application (18) | application (18) | application (18)
+ 13 | higher (16)      | higher (16)      | higher (16)
+ 14 | literature (15)  | literature (15)  | literature (15)
+ 15 | system (15)      | system (15)      | system (15)
+
+Notas:
+- Hay un empate en el corte: "literature", "system" y "systematic" tienen
+  frecuencia 15, pero solo caben dos en el top. Por el criterio de
+  desempate alfabetico entran "literature" y "system", y queda fuera
+  "systematic".
+- "research" y "review" empatan en 46 y quedan en ese orden alfabetico.
+- La lematizacion agrupa singular y plural ("application" incluye
+  "applications"), pero "education" y "educational" siguen siendo
+  terminos distintos.
+- AIED es el acronimo de Artificial Intelligence in Education.
+
+
+=====================================================================
+QUE ARCHIVO RESPONDE CADA PUNTO
+=====================================================================
+
+PREGUNTA 1 - Fundamentacion teorica
+  src/sorting/counting_sort.py   Implementacion: los tres bucles (contar,
+                                 acumular, colocar) que dan O(n + k).
+  src/sorting/radix_sort.py      Implementacion: d pasadas de Counting
+                                 Sort estable, O(d(n + b)).
+  src/sorting/bucket_sort.py     Implementacion: reparto en buckets e
+                                 insertion sort; parametro num_buckets
+                                 para estudiar el efecto del reparto.
+  tests/test_sorting.py          28 pruebas: cada algoritmo ordena igual
+                                 que sorted(), conserva el orden en
+                                 empates (estabilidad) y no modifica la
+                                 entrada.
+  src/extra_analysis.py          Muestra la distribucion de frecuencias
+                                 del corpus (ley de Zipf) que sustenta la
+                                 discusion de Bucket Sort.
+  sustentacion.txt               Este documento (explicacion teorica).
+
+PREGUNTA 2 - Medicion empirica
+  src/benchmark.py               Mide los tres algoritmos sobre el corpus
+                                 (300 repeticiones) y el escalamiento A
+                                 con datos sinteticos.
+  src/extra_analysis.py          Escalamiento B con k fijo.
+  results/timings_corpus.csv     Tiempos sobre el corpus.   (+ .png)
+  results/timings_scaling.csv    Escalamiento A.            (+ .png)
+  results/timings_fixed_k.csv    Escalamiento B.            (+ .png)
+
+PREGUNTA 3 - Validacion de resultados
+  src/benchmark.py               Funcion de validacion (compara los tres
+                                 resultados con sorted()) y generacion del
+                                 top 15.
+  results/top15.csv              Tabla del top 15 por algoritmo.
+  results/top15.png              Grafico de barras del top 15.
+
+Archivos que preparan los datos (pipeline de entrada)
+  src/extraction.py              PDFs -> data/processed/abstracts.json
+  src/preprocessing.py           Limpieza, stopwords y lematizacion.
+  src/frequency.py               Conteo -> data/processed/frequencies.json
+                                 (entrada de los tres algoritmos).
+
+Herramientas de diagnostico (no forman parte del resultado)
+  src/debug_pdf.py, src/check_abstracts.py, src/find_text.py
+
+Como reproducir los resultados (desde la raiz del proyecto, con el
+entorno virtual activo):
+  python src\extraction.py
+  python src\frequency.py
+  python -m pytest -v
+  python src\benchmark.py
+  python src\extra_analysis.py
